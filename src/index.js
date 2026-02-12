@@ -1,88 +1,163 @@
-import { createYoga, createSchema } from "graphql-yoga";
-import { serializeError } from "serialize-error";
-import resolvers from "./resolvers/resolvers.js";
-import loadFileFromBucket from "./schema/loadFileFromBucket.js";
-import { buildClientSchema, printSchema } from "graphql";
-import { makeExecutableSchema } from "graphql-tools";
-import { GCPAccessToken } from "npm-gcp-token";
-import { default as AuthenticationUtility } from "./utils/AuthenticationUtility.js";
-import { default as LogUtility } from "./utils/LoggingUtility.js";
-import { v4 as uuidv4 } from "uuid";
-
-var schema = undefined;
-var yoga = undefined;
-var logging_token = undefined;
-var database_token = undefined;
+import {
+  ALLOWED_METHODS,
+  GRAPHQL_PATH,
+  HEALTH_PATH,
+} from "./proxy/constants.js";
+import {
+  createErrorResponse,
+  createPreflightResponse,
+  isOriginAllowed,
+  withResponseHeaders,
+} from "./proxy/cors.js";
+import { toLoggableError } from "./proxy/errors.js";
+import { extractGraphQLRequest, evaluateOperation } from "./proxy/graphql-request.js";
+import {
+  buildCacheKey,
+  getCacheSettings,
+  shouldAttemptCache,
+  shouldCacheResponse,
+  withEdgeCacheHeaders,
+} from "./proxy/cache.js";
+import { buildUpstreamRequest, buildUpstreamUrl } from "./proxy/upstream.js";
 
 export default {
   async fetch(request, env, ctx) {
-
-    if (logging_token == undefined) logging_token = (await new GCPAccessToken(env.GCP_LOGGING_CREDENTIALS).getAccessToken("https://www.googleapis.com/auth/logging.write")).access_token;
-    if (database_token == undefined) database_token = (await new GCPAccessToken(env.GCP_BIGQUERY_CREDENTIALS).getAccessToken("https://www.googleapis.com/auth/bigquery")).access_token;
-
-    var yoga_ctx = Object.assign({}, env);
-    yoga_ctx['DATABASE_TOKEN'] = database_token;
-    yoga_ctx['LOGGING_TOKEN'] = logging_token;
-
-    if (request.headers.get("X-Shared-Secret") == env.GLOBAL_SHARED_SECRET) {
-      yoga_ctx['account'] = {
-        id: request.headers.get("X-Auth-User"),
-        email: request.headers.get("X-Auth-Email"),
-        name: request.headers.get("X-Auth-Name"),
-        picture: request.headers.get("X-Auth-Profile"),
-        groups: JSON.parse(request.headers.get("X-Auth-Groups")),
-        provider: request.headers.get("X-Auth-Provider"),
-      };
-    } else if (request.headers.get("Authorization") != null || request.headers.get("Authorization") != undefined) {
-      yoga_ctx['account'] = await AuthenticationUtility.fetchAccountInfo(request.headers.get("Authorization").split(" ")[1]);
-    } 
-
-    if (!request.headers.get("SpanId"))
-      yoga_ctx['SpanId'] = uuidv4();
-    
-    if (!schema) {
-      var schemaString = await loadFileFromBucket(env, "graphql_schema.json");
-      var schemaObj = buildClientSchema(JSON.parse(schemaString));
-      var sdlString = printSchema(schemaObj);
-
-      schema = makeExecutableSchema({
-        typeDefs: sdlString,
-        resolvers: resolvers.resolvers,
-        context: env,
-      });
-    }
-
-    if (!yoga) {
-      yoga = createYoga({
-        schema,
-        context: yoga_ctx,
-        logging: "debug",
-        cors: {
-          origin: env.CORS_DOMAINS,
-          credentials: true,
-          methods: ["POST"],
-        },
-        plugins: [LogUtility.addSpanId(yoga_ctx.SpanId)],
-      });
-    }
+    const spanId = request.headers.get("SpanId") || crypto.randomUUID();
+    const url = new URL(request.url);
 
     try {
-      return yoga(request, yoga_ctx);
-    } catch (e) {
-      await LogUtility.logEntry(yoga_ctx, [
-        {
-          severity: "ERROR",
-          jsonPayload: {
-            error:serializeError(e),
-          },
-        },
-      ]);
-      return new Response(JSON.stringify(responseError), {
-        status: 500,
-        headers: {
-          "Content-Type": "application/json",
-        },
+      if (url.pathname === HEALTH_PATH) {
+        return withResponseHeaders(
+          request,
+          env,
+          spanId,
+          new Response(
+            JSON.stringify({
+              status: "ok",
+              service: "graphql-pull-through-proxy",
+              version: env.VERSION || "unknown",
+            }),
+            {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            }
+          ),
+          "BYPASS"
+        );
+      }
+
+      const originCheck = isOriginAllowed(request, env);
+      if (!originCheck.allowed) {
+        return createErrorResponse(
+          request,
+          env,
+          spanId,
+          403,
+          "Origin is not allowed"
+        );
+      }
+
+      if (request.method === "OPTIONS") {
+        return createPreflightResponse(request, env, spanId);
+      }
+
+      if (url.pathname !== GRAPHQL_PATH) {
+        return createErrorResponse(request, env, spanId, 404, "Not found");
+      }
+
+      if (request.method !== "GET" && request.method !== "POST") {
+        const response = createErrorResponse(
+          request,
+          env,
+          spanId,
+          405,
+          "Method not allowed"
+        );
+        response.headers.set("Allow", ALLOWED_METHODS);
+        return response;
+      }
+
+      if (!env.UPSTREAM_GRAPHQL_URL) {
+        return createErrorResponse(
+          request,
+          env,
+          spanId,
+          500,
+          "UPSTREAM_GRAPHQL_URL is not configured"
+        );
+      }
+
+      const requestDetails = await extractGraphQLRequest(request);
+      const operationDetails = evaluateOperation(
+        requestDetails.query,
+        requestDetails.operationName
+      );
+
+      const cacheSettings = getCacheSettings(env);
+      const cacheCandidate = shouldAttemptCache(
+        request,
+        operationDetails,
+        cacheSettings
+      );
+      const upstreamUrl = buildUpstreamUrl(request, env.UPSTREAM_GRAPHQL_URL);
+
+      let cacheKey = undefined;
+      if (cacheCandidate) {
+        cacheKey = await buildCacheKey(
+          request,
+          upstreamUrl,
+          requestDetails.rawBody || ""
+        );
+        const cachedResponse = await caches.default.match(cacheKey);
+        if (cachedResponse) {
+          return withResponseHeaders(
+            request,
+            env,
+            spanId,
+            new Response(cachedResponse.body, cachedResponse),
+            "HIT"
+          );
+        }
+      }
+
+      const upstreamRequest = buildUpstreamRequest(
+        request,
+        upstreamUrl,
+        requestDetails.rawBody,
+        spanId
+      );
+      const upstreamResponse = await fetch(upstreamRequest);
+      const response = new Response(upstreamResponse.body, upstreamResponse);
+
+      if (
+        cacheCandidate &&
+        cacheKey &&
+        (await shouldCacheResponse(response, cacheSettings))
+      ) {
+        const cacheableResponse = withEdgeCacheHeaders(response, cacheSettings);
+        ctx.waitUntil(caches.default.put(cacheKey, cacheableResponse.clone()));
+        return withResponseHeaders(
+          request,
+          env,
+          spanId,
+          cacheableResponse,
+          "MISS"
+        );
+      }
+
+      return withResponseHeaders(request, env, spanId, response, "BYPASS");
+    } catch (error) {
+      console.error("GraphQL proxy request failed", {
+        spanId,
+        error: toLoggableError(error),
       });
+      return createErrorResponse(
+        request,
+        env,
+        spanId,
+        500,
+        "Proxy request failed"
+      );
     }
   },
 };
