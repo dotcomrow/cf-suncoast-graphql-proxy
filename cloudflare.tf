@@ -35,6 +35,11 @@ resource "cloudflare_workers_script" "project_script" {
       text = var.UPSTREAM_GRAPHQL_URL
     },
     {
+      name = "UPSTREAM_TIMEOUT_MS"
+      type = "plain_text"
+      text = tostring(var.UPSTREAM_TIMEOUT_MS)
+    },
+    {
       name = "CACHE_ENABLED"
       type = "plain_text"
       text = tostring(var.CACHE_ENABLED)

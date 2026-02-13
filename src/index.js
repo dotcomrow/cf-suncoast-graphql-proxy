@@ -18,7 +18,13 @@ import {
   shouldCacheResponse,
   withEdgeCacheHeaders,
 } from "./proxy/cache.js";
-import { buildUpstreamRequest, buildUpstreamUrl } from "./proxy/upstream.js";
+import {
+  buildUpstreamRequest,
+  buildUpstreamUrl,
+  fetchUpstream,
+  getUpstreamTimeoutMs,
+  isAbortError,
+} from "./proxy/upstream.js";
 
 export default {
   async fetch(request, env, ctx) {
@@ -126,7 +132,24 @@ export default {
         requestDetails.rawBody,
         spanId
       );
-      const upstreamResponse = await fetch(upstreamRequest);
+      const upstreamTimeoutMs = getUpstreamTimeoutMs(env);
+
+      let upstreamResponse = undefined;
+      try {
+        upstreamResponse = await fetchUpstream(upstreamRequest, upstreamTimeoutMs);
+      } catch (error) {
+        if (isAbortError(error)) {
+          return createErrorResponse(
+            request,
+            env,
+            spanId,
+            504,
+            `Upstream request timed out after ${upstreamTimeoutMs}ms`
+          );
+        }
+        throw error;
+      }
+
       const response = new Response(upstreamResponse.body, upstreamResponse);
 
       if (

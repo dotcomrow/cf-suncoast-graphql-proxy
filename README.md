@@ -28,6 +28,7 @@ Cloudflare Worker that acts as a strict pull-through proxy to an upstream GraphQ
 ## Worker Env Bindings
 
 - `UPSTREAM_GRAPHQL_URL` (required): full upstream GraphQL URL.
+- `UPSTREAM_TIMEOUT_MS` (optional, default `15000`): timeout for upstream GraphQL request before returning `504`.
 - `CORS_DOMAINS` (required): comma-separated allowed origins.
 - `CACHE_ENABLED` (default `true`).
 - `CACHE_TTL_SECONDS` (default `60`).

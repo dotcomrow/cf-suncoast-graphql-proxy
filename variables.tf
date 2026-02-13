@@ -34,6 +34,13 @@ variable "UPSTREAM_GRAPHQL_URL" {
   nullable    = false
 }
 
+variable "UPSTREAM_TIMEOUT_MS" {
+  description = "Upstream fetch timeout in milliseconds"
+  type        = number
+  nullable    = false
+  default     = 15000
+}
+
 variable "ALLOWED_HOSTS" {
   description = "Comma-separated allowed CORS origins"
   type        = string

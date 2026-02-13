@@ -1,6 +1,8 @@
 import { FORWARDED_HEADERS } from "./constants.js";
 import { applyClientIpHeaders } from "./client-ip.js";
 
+const DEFAULT_UPSTREAM_TIMEOUT_MS = 15000;
+
 export function buildUpstreamUrl(request, configuredUpstreamUrl) {
   const requestUrl = new URL(request.url);
   const upstreamUrl = new URL(configuredUpstreamUrl);
@@ -35,4 +37,34 @@ export function buildUpstreamRequest(request, upstreamUrl, rawBody, spanId) {
     headers,
     body: request.method === "POST" ? rawBody || "" : undefined,
   });
+}
+
+function parseTimeoutMs(value, fallback) {
+  const parsed = Number.parseInt(String(value || ""), 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+  return parsed;
+}
+
+export function getUpstreamTimeoutMs(env) {
+  return parseTimeoutMs(env.UPSTREAM_TIMEOUT_MS, DEFAULT_UPSTREAM_TIMEOUT_MS);
+}
+
+export async function fetchUpstream(upstreamRequest, upstreamTimeoutMs) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort("upstream-timeout"), upstreamTimeoutMs);
+
+  try {
+    return await fetch(upstreamRequest, { signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+export function isAbortError(error) {
+  return (
+    (error instanceof DOMException && error.name === "AbortError") ||
+    (typeof error?.name === "string" && error.name === "AbortError")
+  );
 }
