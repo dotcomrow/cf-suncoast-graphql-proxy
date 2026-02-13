@@ -93,14 +93,16 @@ export async function fetchUpstream(upstreamRequest, upstreamTimeoutMs) {
 }
 
 export function isAbortError(error) {
+  const raw = typeof error === "string" ? error : "";
   const message = typeof error?.message === "string" ? error.message : "";
   const causeMessage =
     typeof error?.cause?.message === "string" ? error.cause.message : "";
 
   return (
+    /abort|timeout/i.test(raw) ||
     (error instanceof DOMException && error.name === "AbortError") ||
     (typeof error?.name === "string" && error.name === "AbortError") ||
-    /abort/i.test(message) ||
-    /abort/i.test(causeMessage)
+    /abort|timeout/i.test(message) ||
+    /abort|timeout/i.test(causeMessage)
   );
 }
