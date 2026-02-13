@@ -53,14 +53,54 @@ variable "UPSTREAM_DNS_NAME" {
   default     = "graphql-origin"
 }
 
+variable "UPSTREAM_TUNNEL_ID" {
+  description = "Cloudflare Tunnel UUID used for managed upstream DNS CNAME (<uuid>.cfargotunnel.com). Leave empty to use A record to UPSTREAM_ORIGIN_IP."
+  type        = string
+  nullable    = false
+  default     = ""
+  validation {
+    condition = (
+      length(trimspace(var.UPSTREAM_TUNNEL_ID)) == 0 ||
+      can(regex("^[0-9a-fA-F-]{36}$", trimspace(var.UPSTREAM_TUNNEL_ID)))
+    )
+    error_message = "UPSTREAM_TUNNEL_ID must be a valid tunnel UUID (or empty)."
+  }
+}
+
+variable "MANAGE_UPSTREAM_TUNNEL_CONFIG" {
+  description = "Whether Terraform should manage Cloudflare Tunnel ingress config for UPSTREAM_DNS_NAME on UPSTREAM_TUNNEL_ID"
+  type        = bool
+  nullable    = false
+  default     = false
+  validation {
+    condition     = !var.MANAGE_UPSTREAM_TUNNEL_CONFIG || length(trimspace(var.UPSTREAM_TUNNEL_ID)) > 0
+    error_message = "UPSTREAM_TUNNEL_ID is required when MANAGE_UPSTREAM_TUNNEL_CONFIG is true."
+  }
+}
+
+variable "UPSTREAM_TUNNEL_SERVICE" {
+  description = "Tunnel origin service URL for upstream hostname (example: http://apisix.gateway.svc.cluster.local:80)"
+  type        = string
+  nullable    = false
+  default     = ""
+  validation {
+    condition     = !var.MANAGE_UPSTREAM_TUNNEL_CONFIG || length(trimspace(var.UPSTREAM_TUNNEL_SERVICE)) > 0
+    error_message = "UPSTREAM_TUNNEL_SERVICE is required when MANAGE_UPSTREAM_TUNNEL_CONFIG is true."
+  }
+}
+
 variable "UPSTREAM_ORIGIN_IP" {
-  description = "Origin IPv4 address for the managed upstream proxied A record"
+  description = "Origin IPv4 address for managed upstream A record fallback (used when UPSTREAM_TUNNEL_ID is empty)"
   type        = string
   nullable    = false
   default     = "64.251.17.245"
   validation {
-    condition     = !var.MANAGE_UPSTREAM_DNS_RECORD || length(trimspace(var.UPSTREAM_ORIGIN_IP)) > 0
-    error_message = "UPSTREAM_ORIGIN_IP is required when MANAGE_UPSTREAM_DNS_RECORD is true."
+    condition = (
+      !var.MANAGE_UPSTREAM_DNS_RECORD ||
+      length(trimspace(var.UPSTREAM_TUNNEL_ID)) > 0 ||
+      length(trimspace(var.UPSTREAM_ORIGIN_IP)) > 0
+    )
+    error_message = "When MANAGE_UPSTREAM_DNS_RECORD is true, set UPSTREAM_TUNNEL_ID or UPSTREAM_ORIGIN_IP."
   }
 }
 

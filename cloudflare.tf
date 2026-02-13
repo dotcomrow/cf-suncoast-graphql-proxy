@@ -1,14 +1,19 @@
 locals {
-  upstream_hostname    = "${var.UPSTREAM_DNS_NAME}.${var.domain}"
-  upstream_graphql_url = var.MANAGE_UPSTREAM_DNS_RECORD ? "https://${local.upstream_hostname}${var.UPSTREAM_GRAPHQL_PATH}" : var.UPSTREAM_GRAPHQL_URL
+  upstream_hostname          = "${var.UPSTREAM_DNS_NAME}.${var.domain}"
+  trimmed_upstream_tunnel_id = trimspace(var.UPSTREAM_TUNNEL_ID)
+  trimmed_upstream_tunnel_service = trimspace(var.UPSTREAM_TUNNEL_SERVICE)
+  use_upstream_tunnel        = length(local.trimmed_upstream_tunnel_id) > 0
+  upstream_dns_record_type   = local.use_upstream_tunnel ? "CNAME" : "A"
+  upstream_dns_record_value  = local.use_upstream_tunnel ? "${local.trimmed_upstream_tunnel_id}.cfargotunnel.com" : var.UPSTREAM_ORIGIN_IP
+  upstream_graphql_url       = var.MANAGE_UPSTREAM_DNS_RECORD ? "https://${local.upstream_hostname}${var.UPSTREAM_GRAPHQL_PATH}" : var.UPSTREAM_GRAPHQL_URL
 }
 
 resource "cloudflare_dns_record" "upstream_origin" {
   count   = var.MANAGE_UPSTREAM_DNS_RECORD ? 1 : 0
   zone_id = var.cloudflare_zone_id
   name    = var.UPSTREAM_DNS_NAME
-  type    = "A"
-  content = var.UPSTREAM_ORIGIN_IP
+  type    = local.upstream_dns_record_type
+  content = local.upstream_dns_record_value
   proxied = true
   ttl     = 1
 }
@@ -18,6 +23,26 @@ resource "cloudflare_workers_custom_domain" "project_domain" {
   hostname   = "${var.project_name}.${var.environment}.${var.domain}"
   service    = cloudflare_workers_script.project_script.script_name
   zone_id    = var.cloudflare_zone_id
+}
+
+resource "cloudflare_zero_trust_tunnel_cloudflared_config" "upstream_tunnel" {
+  count      = var.MANAGE_UPSTREAM_TUNNEL_CONFIG ? 1 : 0
+  account_id = var.cloudflare_account_id
+  tunnel_id  = local.trimmed_upstream_tunnel_id
+
+  config = {
+    ingress = [
+      {
+        hostname = local.upstream_hostname
+        service  = local.trimmed_upstream_tunnel_service
+      },
+      {
+        service = "http_status:404"
+      }
+    ]
+  }
+
+  depends_on = [cloudflare_dns_record.upstream_origin]
 }
 
 resource "cloudflare_workers_route" "project_route" {
