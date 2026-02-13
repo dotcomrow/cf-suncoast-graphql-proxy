@@ -172,7 +172,7 @@ export default {
             env,
             spanId,
             504,
-            `Upstream request timed out after ${upstreamTimeoutMs}ms`
+            `Upstream request timed out after ${upstreamTimeoutMs}ms (${sanitizeUpstreamUrl(env.UPSTREAM_GRAPHQL_URL)})`
           );
         }
         throw error;
@@ -251,7 +251,7 @@ async function runUpstreamProbe(request, env, spanId) {
         env,
         spanId,
         504,
-        `Upstream probe timed out after ${upstreamTimeoutMs}ms`
+        `Upstream probe timed out after ${upstreamTimeoutMs}ms (${sanitizeUpstreamUrl(env.UPSTREAM_GRAPHQL_URL)})`
       );
     }
 

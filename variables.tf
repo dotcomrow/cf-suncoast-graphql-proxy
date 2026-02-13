@@ -47,7 +47,7 @@ variable "MANAGE_UPSTREAM_DNS_RECORD" {
 }
 
 variable "UPSTREAM_DNS_NAME" {
-  description = "Relative DNS name for upstream GraphQL record in this zone (example: graphql-origin.app)"
+  description = "Relative DNS name for upstream GraphQL record in this zone (example: graphql-origin)"
   type        = string
   nullable    = false
   default     = "graphql-origin"

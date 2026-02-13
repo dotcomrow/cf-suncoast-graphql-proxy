@@ -40,7 +40,7 @@ Cloudflare Worker that acts as a strict pull-through proxy to an upstream GraphQ
 ## Terraform Upstream DNS
 
 - `MANAGE_UPSTREAM_DNS_RECORD` (default `true`): create and manage a proxied Cloudflare DNS record for upstream GraphQL.
-- `UPSTREAM_DNS_NAME` (default `graphql-origin.app`): relative DNS label in your zone.
+- `UPSTREAM_DNS_NAME` (default `graphql-origin`): relative DNS label in your zone.
 - `UPSTREAM_ORIGIN_IP` (default `64.251.17.245`): origin IPv4 address for that DNS record.
 - `UPSTREAM_GRAPHQL_PATH` (default `/v1/graphql`): path appended to managed hostname.
 - `UPSTREAM_GRAPHQL_URL`: only used when `MANAGE_UPSTREAM_DNS_RECORD=false`.
