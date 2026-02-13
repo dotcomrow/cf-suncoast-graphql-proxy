@@ -50,7 +50,7 @@ variable "UPSTREAM_DNS_NAME" {
   description = "Relative DNS name for upstream GraphQL record in this zone (example: graphql-origin.app)"
   type        = string
   nullable    = false
-  default     = "graphql-origin.app"
+  default     = "graphql-origin"
 }
 
 variable "UPSTREAM_ORIGIN_IP" {
