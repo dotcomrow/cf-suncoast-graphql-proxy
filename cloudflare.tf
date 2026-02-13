@@ -1,3 +1,18 @@
+locals {
+  upstream_hostname    = "${var.UPSTREAM_DNS_NAME}.${var.domain}"
+  upstream_graphql_url = var.MANAGE_UPSTREAM_DNS_RECORD ? "https://${local.upstream_hostname}${var.UPSTREAM_GRAPHQL_PATH}" : var.UPSTREAM_GRAPHQL_URL
+}
+
+resource "cloudflare_dns_record" "upstream_origin" {
+  count   = var.MANAGE_UPSTREAM_DNS_RECORD ? 1 : 0
+  zone_id = var.cloudflare_zone_id
+  name    = var.UPSTREAM_DNS_NAME
+  type    = "A"
+  content = var.UPSTREAM_ORIGIN_IP
+  proxied = true
+  ttl     = 1
+}
+
 resource "cloudflare_workers_custom_domain" "project_domain" {
   account_id = var.cloudflare_account_id
   hostname   = "${var.project_name}.${var.environment}.${var.domain}"
@@ -18,6 +33,7 @@ resource "cloudflare_workers_script" "project_script" {
   content_sha256     = filesha256("${path.module}/dist/index.mjs")
   compatibility_date = "2023-08-28"
   main_module        = "index.mjs"
+  depends_on         = [cloudflare_dns_record.upstream_origin]
   bindings = [
     {
       name = "CORS_DOMAINS"
@@ -32,7 +48,7 @@ resource "cloudflare_workers_script" "project_script" {
     {
       name = "UPSTREAM_GRAPHQL_URL"
       type = "plain_text"
-      text = var.UPSTREAM_GRAPHQL_URL
+      text = local.upstream_graphql_url
     },
     {
       name = "UPSTREAM_TIMEOUT_MS"

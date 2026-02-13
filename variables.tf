@@ -29,9 +29,50 @@ variable "project_name" {
 }
 
 variable "UPSTREAM_GRAPHQL_URL" {
-  description = "HTTPS URL for upstream GraphQL endpoint in k8s"
+  description = "Full upstream GraphQL URL (used only when MANAGE_UPSTREAM_DNS_RECORD=false)"
   type        = string
   nullable    = false
+  default     = ""
+  validation {
+    condition     = var.MANAGE_UPSTREAM_DNS_RECORD || can(regex("^https://", trimspace(var.UPSTREAM_GRAPHQL_URL)))
+    error_message = "UPSTREAM_GRAPHQL_URL must be an https URL when MANAGE_UPSTREAM_DNS_RECORD is false."
+  }
+}
+
+variable "MANAGE_UPSTREAM_DNS_RECORD" {
+  description = "Whether Terraform should manage a proxied Cloudflare DNS record for upstream GraphQL"
+  type        = bool
+  nullable    = false
+  default     = true
+}
+
+variable "UPSTREAM_DNS_NAME" {
+  description = "Relative DNS name for upstream GraphQL record in this zone (example: graphql-origin.app)"
+  type        = string
+  nullable    = false
+  default     = "graphql-origin.app"
+}
+
+variable "UPSTREAM_ORIGIN_IP" {
+  description = "Origin IPv4 address for the managed upstream proxied A record"
+  type        = string
+  nullable    = false
+  default     = "64.251.17.245"
+  validation {
+    condition     = !var.MANAGE_UPSTREAM_DNS_RECORD || length(trimspace(var.UPSTREAM_ORIGIN_IP)) > 0
+    error_message = "UPSTREAM_ORIGIN_IP is required when MANAGE_UPSTREAM_DNS_RECORD is true."
+  }
+}
+
+variable "UPSTREAM_GRAPHQL_PATH" {
+  description = "Path appended to the managed upstream hostname"
+  type        = string
+  nullable    = false
+  default     = "/v1/graphql"
+  validation {
+    condition     = startswith(var.UPSTREAM_GRAPHQL_PATH, "/")
+    error_message = "UPSTREAM_GRAPHQL_PATH must start with '/'."
+  }
 }
 
 variable "UPSTREAM_TIMEOUT_MS" {
