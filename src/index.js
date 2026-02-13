@@ -2,6 +2,7 @@ import {
   ALLOWED_METHODS,
   GRAPHQL_PATH,
   HEALTH_PATH,
+  UPSTREAM_PROBE_PATH,
 } from "./proxy/constants.js";
 import {
   createErrorResponse,
@@ -20,6 +21,7 @@ import {
 } from "./proxy/cache.js";
 import {
   buildUpstreamRequest,
+  buildUpstreamProbeRequest,
   buildUpstreamUrl,
   fetchUpstream,
   getUpstreamTimeoutMs,
@@ -65,6 +67,32 @@ export default {
 
       if (request.method === "OPTIONS") {
         return createPreflightResponse(request, env, spanId);
+      }
+
+      if (url.pathname === UPSTREAM_PROBE_PATH) {
+        if (request.method !== "GET") {
+          const response = createErrorResponse(
+            request,
+            env,
+            spanId,
+            405,
+            "Method not allowed"
+          );
+          response.headers.set("Allow", "GET,OPTIONS");
+          return response;
+        }
+
+        if (!env.UPSTREAM_GRAPHQL_URL) {
+          return createErrorResponse(
+            request,
+            env,
+            spanId,
+            500,
+            "UPSTREAM_GRAPHQL_URL is not configured"
+          );
+        }
+
+        return await runUpstreamProbe(request, env, spanId);
       }
 
       if (url.pathname !== GRAPHQL_PATH) {
@@ -184,3 +212,68 @@ export default {
     }
   },
 };
+
+async function runUpstreamProbe(request, env, spanId) {
+  const upstreamTimeoutMs = getUpstreamTimeoutMs(env);
+  const probeRequest = buildUpstreamProbeRequest(
+    request,
+    env.UPSTREAM_GRAPHQL_URL,
+    spanId
+  );
+  const probeStartedAt = Date.now();
+
+  try {
+    const upstreamResponse = await fetchUpstream(probeRequest, upstreamTimeoutMs);
+    const response = new Response(
+      JSON.stringify({
+        status: "reachable",
+        upstream: {
+          url: sanitizeUpstreamUrl(env.UPSTREAM_GRAPHQL_URL),
+          status: upstreamResponse.status,
+          ok: upstreamResponse.ok,
+          contentType: upstreamResponse.headers.get("Content-Type") || null,
+        },
+        upstreamTimeoutMs,
+        durationMs: Date.now() - probeStartedAt,
+        spanId,
+      }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+
+    return withResponseHeaders(request, env, spanId, response, "BYPASS");
+  } catch (error) {
+    if (isAbortError(error)) {
+      return createErrorResponse(
+        request,
+        env,
+        spanId,
+        504,
+        `Upstream probe timed out after ${upstreamTimeoutMs}ms`
+      );
+    }
+
+    return createErrorResponse(
+      request,
+      env,
+      spanId,
+      502,
+      `Upstream probe failed: ${toLoggableError(error).message}`
+    );
+  }
+}
+
+function sanitizeUpstreamUrl(rawUrl) {
+  try {
+    const url = new URL(rawUrl);
+    url.username = "";
+    url.password = "";
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch (_e) {
+    return "invalid-upstream-url";
+  }
+}

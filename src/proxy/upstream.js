@@ -2,6 +2,7 @@ import { FORWARDED_HEADERS } from "./constants.js";
 import { applyClientIpHeaders } from "./client-ip.js";
 
 const DEFAULT_UPSTREAM_TIMEOUT_MS = 15000;
+const UPSTREAM_PROBE_QUERY = "query __ProxyUpstreamProbe { __typename }";
 
 export function buildUpstreamUrl(request, configuredUpstreamUrl) {
   const requestUrl = new URL(request.url);
@@ -39,6 +40,35 @@ export function buildUpstreamRequest(request, upstreamUrl, rawBody, spanId) {
   });
 }
 
+export function buildUpstreamProbeRequest(
+  request,
+  configuredUpstreamUrl,
+  spanId
+) {
+  const headers = new Headers();
+
+  for (const headerName of FORWARDED_HEADERS) {
+    const value = request.headers.get(headerName);
+    if (value) {
+      headers.set(headerName, value);
+    }
+  }
+
+  headers.set("Accept", "application/json");
+  headers.set("Content-Type", "application/json");
+  applyClientIpHeaders(request, headers);
+  headers.set("X-Proxy-Span-Id", spanId);
+
+  return new Request(configuredUpstreamUrl, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      query: UPSTREAM_PROBE_QUERY,
+      operationName: "__ProxyUpstreamProbe",
+    }),
+  });
+}
+
 function parseTimeoutMs(value, fallback) {
   const parsed = Number.parseInt(String(value || ""), 10);
   if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -63,8 +93,14 @@ export async function fetchUpstream(upstreamRequest, upstreamTimeoutMs) {
 }
 
 export function isAbortError(error) {
+  const message = typeof error?.message === "string" ? error.message : "";
+  const causeMessage =
+    typeof error?.cause?.message === "string" ? error.cause.message : "";
+
   return (
     (error instanceof DOMException && error.name === "AbortError") ||
-    (typeof error?.name === "string" && error.name === "AbortError")
+    (typeof error?.name === "string" && error.name === "AbortError") ||
+    /abort/i.test(message) ||
+    /abort/i.test(causeMessage)
   );
 }

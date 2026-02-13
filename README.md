@@ -38,3 +38,4 @@ Cloudflare Worker that acts as a strict pull-through proxy to an upstream GraphQ
 ## Health Check
 
 - `GET /healthz` returns proxy health and version.
+- `GET /upstream-probe` performs a direct probe to `UPSTREAM_GRAPHQL_URL` and returns reachability/latency/status diagnostics.
