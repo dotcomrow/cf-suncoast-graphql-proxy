@@ -86,7 +86,10 @@ export async function shouldCacheResponse(response, cacheSettings) {
   }
 
   const contentType = (response.headers.get("Content-Type") || "").toLowerCase();
-  if (!contentType.includes("application/json")) {
+  if (
+    !contentType.includes("application/json") &&
+    !contentType.includes("+json")
+  ) {
     return true;
   }
 
