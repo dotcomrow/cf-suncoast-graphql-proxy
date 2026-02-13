@@ -198,7 +198,7 @@ export default {
 
       return withResponseHeaders(request, env, spanId, response, "BYPASS");
     } catch (error) {
-      console.error("GraphQL proxy request failed", {
+      console.error("GraphQL proxy request failed!", {
         spanId,
         error: toLoggableError(error),
       });
