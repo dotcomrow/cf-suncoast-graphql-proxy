@@ -1,15 +1,20 @@
 locals {
-  upstream_hostname          = "${var.UPSTREAM_DNS_NAME}.${var.domain}"
-  trimmed_upstream_tunnel_id = trimspace(var.UPSTREAM_TUNNEL_ID)
+  upstream_hostname               = "${var.UPSTREAM_DNS_NAME}.${var.domain}"
+  normalized_environment          = lower(trimspace(var.environment))
+  normalized_shared_owner_env     = lower(trimspace(var.UPSTREAM_SHARED_OWNER_ENVIRONMENT))
+  is_shared_upstream_owner        = local.normalized_environment == local.normalized_shared_owner_env
+  manage_shared_upstream_dns      = var.MANAGE_UPSTREAM_DNS_RECORD && local.is_shared_upstream_owner
+  manage_shared_upstream_tunnel   = var.MANAGE_UPSTREAM_TUNNEL_CONFIG && local.is_shared_upstream_owner
+  trimmed_upstream_tunnel_id      = trimspace(var.UPSTREAM_TUNNEL_ID)
   trimmed_upstream_tunnel_service = trimspace(var.UPSTREAM_TUNNEL_SERVICE)
-  use_upstream_tunnel        = length(local.trimmed_upstream_tunnel_id) > 0
-  upstream_dns_record_type   = local.use_upstream_tunnel ? "CNAME" : "A"
-  upstream_dns_record_value  = local.use_upstream_tunnel ? "${local.trimmed_upstream_tunnel_id}.cfargotunnel.com" : var.UPSTREAM_ORIGIN_IP
-  upstream_graphql_url       = var.MANAGE_UPSTREAM_DNS_RECORD ? "https://${local.upstream_hostname}${var.UPSTREAM_GRAPHQL_PATH}" : var.UPSTREAM_GRAPHQL_URL
+  use_upstream_tunnel             = length(local.trimmed_upstream_tunnel_id) > 0
+  upstream_dns_record_type        = local.use_upstream_tunnel ? "CNAME" : "A"
+  upstream_dns_record_value       = local.use_upstream_tunnel ? "${local.trimmed_upstream_tunnel_id}.cfargotunnel.com" : var.UPSTREAM_ORIGIN_IP
+  upstream_graphql_url            = var.MANAGE_UPSTREAM_DNS_RECORD ? "https://${local.upstream_hostname}${var.UPSTREAM_GRAPHQL_PATH}" : var.UPSTREAM_GRAPHQL_URL
 }
 
 resource "cloudflare_dns_record" "upstream_origin" {
-  count   = var.MANAGE_UPSTREAM_DNS_RECORD ? 1 : 0
+  count   = local.manage_shared_upstream_dns ? 1 : 0
   zone_id = var.cloudflare_zone_id
   name    = var.UPSTREAM_DNS_NAME
   type    = local.upstream_dns_record_type
@@ -26,7 +31,7 @@ resource "cloudflare_workers_custom_domain" "project_domain" {
 }
 
 resource "cloudflare_zero_trust_tunnel_cloudflared_config" "upstream_tunnel" {
-  count      = var.MANAGE_UPSTREAM_TUNNEL_CONFIG ? 1 : 0
+  count      = local.manage_shared_upstream_tunnel ? 1 : 0
   account_id = var.cloudflare_account_id
   tunnel_id  = local.trimmed_upstream_tunnel_id
 

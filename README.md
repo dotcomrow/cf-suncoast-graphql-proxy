@@ -40,6 +40,7 @@ Cloudflare Worker that acts as a strict pull-through proxy to an upstream GraphQ
 ## Terraform Upstream DNS
 
 - `MANAGE_UPSTREAM_DNS_RECORD` (default `true`): create and manage a proxied Cloudflare DNS record for upstream GraphQL.
+- `UPSTREAM_SHARED_OWNER_ENVIRONMENT` (default `dev`): only this environment manages shared upstream DNS+tunnel resources to avoid duplicate create errors across `dev`/`prod`.
 - `UPSTREAM_DNS_NAME` (default `graphql-origin`): relative DNS label in your zone.
 - `UPSTREAM_TUNNEL_ID` (default `69517d80-2079-43f1-97f7-cfd716298c50`): when set, managed DNS is a proxied `CNAME` to `<UPSTREAM_TUNNEL_ID>.cfargotunnel.com`.
 - `UPSTREAM_ORIGIN_IP` (default `64.251.17.245`): fallback origin IPv4 when `UPSTREAM_TUNNEL_ID` is empty (managed DNS is proxied `A`).
@@ -54,6 +55,7 @@ Cloudflare Worker that acts as a strict pull-through proxy to an upstream GraphQ
   - ingress rule for `${UPSTREAM_DNS_NAME}.${domain}` -> `UPSTREAM_TUNNEL_SERVICE`
   - catch-all `http_status:404` rule
 - Important: this resource manages the tunnel's ingress config for that tunnel id. Use a dedicated tunnel if other hostname rules are managed elsewhere.
+- Shared ownership: only the workspace where `environment == UPSTREAM_SHARED_OWNER_ENVIRONMENT` creates/updates this shared tunnel config.
 
 ## Health Check
 
