@@ -1,0 +1,17 @@
+{
+  "name": "graphql-proxy",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "webpack --config webpack.config.js",
+    "start": "clear && webpack --config webpack.config.js && npx wrangler dev --remote"
+  },
+  "dependencies": {
+    "graphql": "^16.9.0"
+  },
+  "devDependencies": {
+    "webpack": "^5.105.2",
+    "webpack-cli": "^5.1.4"
+  }
+}
