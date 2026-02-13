@@ -1,3 +1,23 @@
+locals {
+  upstream_hostname          = "${var.UPSTREAM_DNS_NAME}.${var.domain}"
+  trimmed_upstream_tunnel_id = trimspace(var.UPSTREAM_TUNNEL_ID)
+  trimmed_upstream_tunnel_service = trimspace(var.UPSTREAM_TUNNEL_SERVICE)
+  use_upstream_tunnel        = length(local.trimmed_upstream_tunnel_id) > 0
+  upstream_dns_record_type   = local.use_upstream_tunnel ? "CNAME" : "A"
+  upstream_dns_record_value  = local.use_upstream_tunnel ? "${local.trimmed_upstream_tunnel_id}.cfargotunnel.com" : var.UPSTREAM_ORIGIN_IP
+  upstream_graphql_url       = var.MANAGE_UPSTREAM_DNS_RECORD ? "https://${local.upstream_hostname}${var.UPSTREAM_GRAPHQL_PATH}" : var.UPSTREAM_GRAPHQL_URL
+}
+
+resource "cloudflare_dns_record" "upstream_origin" {
+  count   = var.MANAGE_UPSTREAM_DNS_RECORD ? 1 : 0
+  zone_id = var.cloudflare_zone_id
+  name    = var.UPSTREAM_DNS_NAME
+  type    = local.upstream_dns_record_type
+  content = local.upstream_dns_record_value
+  proxied = true
+  ttl     = 1
+}
+
 resource "cloudflare_workers_custom_domain" "project_domain" {
   account_id = var.cloudflare_account_id
   hostname   = "${var.project_name}.${var.environment}.${var.domain}"
@@ -5,33 +25,30 @@ resource "cloudflare_workers_custom_domain" "project_domain" {
   zone_id    = var.cloudflare_zone_id
 }
 
+resource "cloudflare_zero_trust_tunnel_cloudflared_config" "upstream_tunnel" {
+  count      = var.MANAGE_UPSTREAM_TUNNEL_CONFIG ? 1 : 0
+  account_id = var.cloudflare_account_id
+  tunnel_id  = local.trimmed_upstream_tunnel_id
+
+  config = {
+    ingress = [
+      {
+        hostname = local.upstream_hostname
+        service  = local.trimmed_upstream_tunnel_service
+      },
+      {
+        service = "http_status:404"
+      }
+    ]
+  }
+
+  depends_on = [cloudflare_dns_record.upstream_origin]
+}
+
 resource "cloudflare_workers_route" "project_route" {
   zone_id  = var.cloudflare_zone_id
   pattern  = "${var.project_name}.${var.environment}.${var.domain}/*"
   script   = cloudflare_workers_script.project_script.script_name
-}
-
-resource "cloudflare_r2_bucket" "schemas_bucket" {
-  account_id = var.cloudflare_account_id
-  name       = "schemas-pulsedb-${var.environment}"
-}
-
-resource "null_resource" "project_id" {
-  triggers = {
-    always_run = timestamp()
-  }
-
-  provisioner "local-exec" {
-    command = "${path.module}/scripts/get_project_id.sh"
-    environment = {
-       project = "pulsedb-${var.environment}"
-    }
-  }
-}
-
-data "local_file" "load_project_id" {
-    filename = "${path.module}/project_id"
-  depends_on = [ null_resource.project_id ]
 }
 
 resource "cloudflare_workers_script" "project_script" {
@@ -41,6 +58,7 @@ resource "cloudflare_workers_script" "project_script" {
   content_sha256     = filesha256("${path.module}/dist/index.mjs")
   compatibility_date = "2023-08-28"
   main_module        = "index.mjs"
+  depends_on         = [cloudflare_dns_record.upstream_origin]
   bindings = [
     {
       name = "CORS_DOMAINS"
@@ -48,61 +66,39 @@ resource "cloudflare_workers_script" "project_script" {
       text = var.ALLOWED_HOSTS
     },
     {
-      name = "ENVIRONMENT"
-      type = "plain_text"
-      text = var.environment
-    },
-    {
-      name = "GCP_LOGGING_PROJECT_ID"
-      type = "plain_text"
-      text = var.GCP_LOGGING_PROJECT_ID
-    },
-    {
-      name = "LOG_NAME"
-      type = "plain_text"
-      text = "${var.project_name}_${var.environment}_worker_log"
-    },
-    {
-      name        = "SCHEMAS_BUCKET"
-      type        = "r2_bucket"
-      bucket_name = cloudflare_r2_bucket.schemas_bucket.name
-    },
-    {
-      name = "PULSE_DATASET"
-      type = "plain_text"
-      text = "pulsedb_dataset"
-    },
-    {
-      name = "PULSE_DATABASE_PROJECT_ID"
-      type = "plain_text"
-      text = data.local_file.load_project_id.content
-    },
-    {
       name = "VERSION"
       type = "plain_text"
       text = var.VERSION
     },
     {
-      name = "GCP_LOGGING_CREDENTIALS"
-      type = "secret_text"
-      text = var.GCP_LOGGING_CREDENTIALS
+      name = "UPSTREAM_GRAPHQL_URL"
+      type = "plain_text"
+      text = local.upstream_graphql_url
     },
     {
-      name = "GCP_BIGQUERY_CREDENTIALS"
-      type = "secret_text"
-      text = var.GCP_BIGQUERY_CREDENTIALS
+      name = "UPSTREAM_TIMEOUT_MS"
+      type = "plain_text"
+      text = tostring(var.UPSTREAM_TIMEOUT_MS)
     },
     {
-      name = "GCP_USERINFO_CREDENTIALS"
-      type = "secret_text"
-      text = var.GCP_USERINFO_CREDENTIALS
+      name = "CACHE_ENABLED"
+      type = "plain_text"
+      text = tostring(var.CACHE_ENABLED)
     },
     {
-      name = "GLOBAL_SHARED_SECRET"
-      type = "secret_text"
-      text = var.GLOBAL_SHARED_SECRET
+      name = "CACHE_TTL_SECONDS"
+      type = "plain_text"
+      text = tostring(var.CACHE_TTL_SECONDS)
+    },
+    {
+      name = "CACHE_STALE_WHILE_REVALIDATE_SECONDS"
+      type = "plain_text"
+      text = tostring(var.CACHE_STALE_WHILE_REVALIDATE_SECONDS)
+    },
+    {
+      name = "CACHE_INCLUDE_GRAPHQL_ERRORS"
+      type = "plain_text"
+      text = tostring(var.CACHE_INCLUDE_GRAPHQL_ERRORS)
     }
   ]
-
-  depends_on = [ data.local_file.load_project_id, cloudflare_r2_bucket.schemas_bucket ]
 }
