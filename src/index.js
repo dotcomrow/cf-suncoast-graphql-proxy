@@ -11,7 +11,11 @@ import {
   withResponseHeaders,
 } from "./proxy/cors.js";
 import { toLoggableError } from "./proxy/errors.js";
-import { extractGraphQLRequest, evaluateOperation } from "./proxy/graphql-request.js";
+import {
+  extractGraphQLRequest,
+  evaluateOperation,
+  normalizePersistedQueryPayload,
+} from "./proxy/graphql-request.js";
 import {
   buildCacheKey,
   getCacheSettings,
@@ -121,7 +125,10 @@ export default {
         );
       }
 
-      const requestDetails = await extractGraphQLRequest(request);
+      const extractedRequestDetails = await extractGraphQLRequest(request);
+      const requestDetails = normalizePersistedQueryPayload(
+        extractedRequestDetails
+      );
       const operationDetails = evaluateOperation(
         requestDetails.query,
         requestDetails.operationName

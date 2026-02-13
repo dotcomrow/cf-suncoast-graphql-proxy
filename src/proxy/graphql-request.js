@@ -24,6 +24,7 @@ export async function extractGraphQLRequest(request) {
               ? payload.operationName
               : undefined,
           rawBody: bodyText,
+          jsonPayload: payload,
         };
       }
     } catch (_e) {
@@ -43,6 +44,51 @@ export async function extractGraphQLRequest(request) {
     query: undefined,
     operationName: undefined,
     rawBody: bodyText,
+  };
+}
+
+function hasPersistedQueryExtension(payload) {
+  return Boolean(
+    payload &&
+      payload.extensions &&
+      typeof payload.extensions === "object" &&
+      !Array.isArray(payload.extensions) &&
+      payload.extensions.persistedQuery &&
+      typeof payload.extensions.persistedQuery === "object"
+  );
+}
+
+export function normalizePersistedQueryPayload(requestDetails) {
+  const payload = requestDetails.jsonPayload;
+  if (!payload || !hasPersistedQueryExtension(payload)) {
+    return requestDetails;
+  }
+
+  const query =
+    typeof payload.query === "string" ? payload.query.trim() : "";
+  if (!query) {
+    return requestDetails;
+  }
+
+  const nextPayload = { ...payload };
+  const nextExtensions = { ...payload.extensions };
+  delete nextExtensions.persistedQuery;
+
+  if (Object.keys(nextExtensions).length === 0) {
+    delete nextPayload.extensions;
+  } else {
+    nextPayload.extensions = nextExtensions;
+  }
+
+  return {
+    ...requestDetails,
+    query: typeof nextPayload.query === "string" ? nextPayload.query : undefined,
+    operationName:
+      typeof nextPayload.operationName === "string"
+        ? nextPayload.operationName
+        : undefined,
+    rawBody: JSON.stringify(nextPayload),
+    jsonPayload: nextPayload,
   };
 }
 
