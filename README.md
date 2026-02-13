@@ -41,15 +41,15 @@ Cloudflare Worker that acts as a strict pull-through proxy to an upstream GraphQ
 
 - `MANAGE_UPSTREAM_DNS_RECORD` (default `true`): create and manage a proxied Cloudflare DNS record for upstream GraphQL.
 - `UPSTREAM_DNS_NAME` (default `graphql-origin`): relative DNS label in your zone.
-- `UPSTREAM_TUNNEL_ID` (default empty): when set, managed DNS is a proxied `CNAME` to `<UPSTREAM_TUNNEL_ID>.cfargotunnel.com`.
+- `UPSTREAM_TUNNEL_ID` (default `69517d80-2079-43f1-97f7-cfd716298c50`): when set, managed DNS is a proxied `CNAME` to `<UPSTREAM_TUNNEL_ID>.cfargotunnel.com`.
 - `UPSTREAM_ORIGIN_IP` (default `64.251.17.245`): fallback origin IPv4 when `UPSTREAM_TUNNEL_ID` is empty (managed DNS is proxied `A`).
 - `UPSTREAM_GRAPHQL_PATH` (default `/v1/graphql`): path appended to managed hostname.
 - `UPSTREAM_GRAPHQL_URL`: only used when `MANAGE_UPSTREAM_DNS_RECORD=false`.
 
 ## Terraform Tunnel Config (Optional)
 
-- `MANAGE_UPSTREAM_TUNNEL_CONFIG` (default `false`): manage tunnel ingress config for `UPSTREAM_DNS_NAME`.
-- `UPSTREAM_TUNNEL_SERVICE` (required when enabled): origin service URL tunnel should route to (for example `http://apisix.gateway.svc.cluster.local:80`).
+- `MANAGE_UPSTREAM_TUNNEL_CONFIG` (default `true`): manage tunnel ingress config for `UPSTREAM_DNS_NAME`.
+- `UPSTREAM_TUNNEL_SERVICE` (default `http://hasura.graphql.svc.cluster.local:8080`): origin service URL tunnel should route to (for example `http://apisix.gateway.svc.cluster.local:80`).
 - Uses `cloudflare_zero_trust_tunnel_cloudflared_config` and defines:
   - ingress rule for `${UPSTREAM_DNS_NAME}.${domain}` -> `UPSTREAM_TUNNEL_SERVICE`
   - catch-all `http_status:404` rule

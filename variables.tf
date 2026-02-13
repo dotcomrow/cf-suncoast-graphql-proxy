@@ -57,7 +57,7 @@ variable "UPSTREAM_TUNNEL_ID" {
   description = "Cloudflare Tunnel UUID used for managed upstream DNS CNAME (<uuid>.cfargotunnel.com). Leave empty to use A record to UPSTREAM_ORIGIN_IP."
   type        = string
   nullable    = false
-  default     = ""
+  default     = "69517d80-2079-43f1-97f7-cfd716298c50"
   validation {
     condition = (
       length(trimspace(var.UPSTREAM_TUNNEL_ID)) == 0 ||
@@ -71,7 +71,7 @@ variable "MANAGE_UPSTREAM_TUNNEL_CONFIG" {
   description = "Whether Terraform should manage Cloudflare Tunnel ingress config for UPSTREAM_DNS_NAME on UPSTREAM_TUNNEL_ID"
   type        = bool
   nullable    = false
-  default     = false
+  default     = true
   validation {
     condition     = !var.MANAGE_UPSTREAM_TUNNEL_CONFIG || length(trimspace(var.UPSTREAM_TUNNEL_ID)) > 0
     error_message = "UPSTREAM_TUNNEL_ID is required when MANAGE_UPSTREAM_TUNNEL_CONFIG is true."
@@ -82,10 +82,17 @@ variable "UPSTREAM_TUNNEL_SERVICE" {
   description = "Tunnel origin service URL for upstream hostname (example: http://apisix.gateway.svc.cluster.local:80)"
   type        = string
   nullable    = false
-  default     = ""
+  default     = "http://hasura.graphql.svc.cluster.local:8080"
   validation {
     condition     = !var.MANAGE_UPSTREAM_TUNNEL_CONFIG || length(trimspace(var.UPSTREAM_TUNNEL_SERVICE)) > 0
     error_message = "UPSTREAM_TUNNEL_SERVICE is required when MANAGE_UPSTREAM_TUNNEL_CONFIG is true."
+  }
+  validation {
+    condition = (
+      !var.MANAGE_UPSTREAM_TUNNEL_CONFIG ||
+      can(regex("^https?://", trimspace(var.UPSTREAM_TUNNEL_SERVICE)))
+    )
+    error_message = "UPSTREAM_TUNNEL_SERVICE must start with http:// or https:// when MANAGE_UPSTREAM_TUNNEL_CONFIG is true."
   }
 }
 
