@@ -40,10 +40,21 @@ variable "UPSTREAM_GRAPHQL_URL" {
 }
 
 variable "MANAGE_UPSTREAM_DNS_RECORD" {
-  description = "Whether Terraform should manage a proxied Cloudflare DNS record for upstream GraphQL"
+  description = "Whether Terraform should manage a shared proxied Cloudflare DNS record for upstream GraphQL (only in UPSTREAM_SHARED_OWNER_ENVIRONMENT)"
   type        = bool
   nullable    = false
   default     = true
+}
+
+variable "UPSTREAM_SHARED_OWNER_ENVIRONMENT" {
+  description = "Environment name that owns shared upstream DNS and tunnel resources (for example: dev or prod)"
+  type        = string
+  nullable    = false
+  default     = "dev"
+  validation {
+    condition     = length(trimspace(var.UPSTREAM_SHARED_OWNER_ENVIRONMENT)) > 0
+    error_message = "UPSTREAM_SHARED_OWNER_ENVIRONMENT must not be empty."
+  }
 }
 
 variable "UPSTREAM_DNS_NAME" {
@@ -68,7 +79,7 @@ variable "UPSTREAM_TUNNEL_ID" {
 }
 
 variable "MANAGE_UPSTREAM_TUNNEL_CONFIG" {
-  description = "Whether Terraform should manage Cloudflare Tunnel ingress config for UPSTREAM_DNS_NAME on UPSTREAM_TUNNEL_ID"
+  description = "Whether Terraform should manage shared Cloudflare Tunnel ingress config for UPSTREAM_DNS_NAME on UPSTREAM_TUNNEL_ID (only in UPSTREAM_SHARED_OWNER_ENVIRONMENT)"
   type        = bool
   nullable    = false
   default     = true
