@@ -13,10 +13,20 @@ export const FORWARDED_HEADERS = [
   "Accept-Encoding",
   "Authorization",
   "Content-Type",
+  "Origin",
   "apollographql-client-name",
   "apollographql-client-version",
   "User-Agent",
   "X-Request-Id",
   "X-Correlation-Id",
   "X-Cloud-Trace-Context",
+];
+
+export const FORWARDED_WEBSOCKET_HEADERS = [
+  "Connection",
+  "Upgrade",
+  "Sec-WebSocket-Key",
+  "Sec-WebSocket-Version",
+  "Sec-WebSocket-Protocol",
+  "Sec-WebSocket-Extensions",
 ];

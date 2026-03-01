@@ -30,6 +30,7 @@ import {
   fetchUpstream,
   getUpstreamTimeoutMs,
   isAbortError,
+  isWebSocketUpgradeRequest,
 } from "./proxy/upstream.js";
 
 export default {
@@ -125,6 +126,57 @@ export default {
         );
       }
 
+      const upstreamUrl = buildUpstreamUrl(request, env.UPSTREAM_GRAPHQL_URL);
+      const webSocketUpgrade = isWebSocketUpgradeRequest(request);
+
+      if (webSocketUpgrade) {
+        if (request.method !== "GET") {
+          const response = createErrorResponse(
+            request,
+            env,
+            spanId,
+            405,
+            "Method not allowed"
+          );
+          response.headers.set("Allow", "GET,OPTIONS");
+          return response;
+        }
+
+        const upstreamRequest = buildUpstreamRequest(
+          request,
+          upstreamUrl,
+          undefined,
+          spanId
+        );
+        const upstreamTimeoutMs = getUpstreamTimeoutMs(env);
+
+        try {
+          const upstreamResponse = await fetchUpstream(
+            upstreamRequest,
+            upstreamTimeoutMs
+          );
+
+          // Preserve the upgraded socket by returning the upstream response as-is.
+          if (upstreamResponse.status === 101) {
+            return upstreamResponse;
+          }
+
+          const response = new Response(upstreamResponse.body, upstreamResponse);
+          return withResponseHeaders(request, env, spanId, response, "BYPASS");
+        } catch (error) {
+          if (isAbortError(error)) {
+            return createErrorResponse(
+              request,
+              env,
+              spanId,
+              504,
+              `Upstream request timed out after ${upstreamTimeoutMs}ms (${sanitizeUpstreamUrl(env.UPSTREAM_GRAPHQL_URL)})`
+            );
+          }
+          throw error;
+        }
+      }
+
       const extractedRequestDetails = await extractGraphQLRequest(request);
       const requestDetails = normalizePersistedQueryPayload(
         extractedRequestDetails
@@ -140,7 +192,6 @@ export default {
         operationDetails,
         cacheSettings
       );
-      const upstreamUrl = buildUpstreamUrl(request, env.UPSTREAM_GRAPHQL_URL);
 
       let cacheKey = undefined;
       if (cacheCandidate) {
