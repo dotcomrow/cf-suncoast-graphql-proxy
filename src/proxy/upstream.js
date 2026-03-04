@@ -1,8 +1,16 @@
-import { FORWARDED_HEADERS } from "./constants.js";
+import {
+  FORWARDED_HEADERS,
+  FORWARDED_WEBSOCKET_HEADERS,
+} from "./constants.js";
 import { applyClientIpHeaders } from "./client-ip.js";
 
 const DEFAULT_UPSTREAM_TIMEOUT_MS = 15000;
 const UPSTREAM_PROBE_QUERY = "query __ProxyUpstreamProbe { __typename }";
+
+export function isWebSocketUpgradeRequest(request) {
+  const upgrade = request.headers.get("Upgrade") || "";
+  return upgrade.toLowerCase() === "websocket";
+}
 
 export function buildUpstreamUrl(request, configuredUpstreamUrl) {
   const requestUrl = new URL(request.url);
@@ -13,6 +21,7 @@ export function buildUpstreamUrl(request, configuredUpstreamUrl) {
 
 export function buildUpstreamRequest(request, upstreamUrl, rawBody, spanId) {
   const headers = new Headers();
+  const webSocketUpgrade = isWebSocketUpgradeRequest(request);
 
   for (const headerName of FORWARDED_HEADERS) {
     const value = request.headers.get(headerName);
@@ -21,7 +30,16 @@ export function buildUpstreamRequest(request, upstreamUrl, rawBody, spanId) {
     }
   }
 
-  if (!headers.get("Accept")) {
+  if (webSocketUpgrade) {
+    for (const headerName of FORWARDED_WEBSOCKET_HEADERS) {
+      const value = request.headers.get(headerName);
+      if (value) {
+        headers.set(headerName, value);
+      }
+    }
+  }
+
+  if (!webSocketUpgrade && !headers.get("Accept")) {
     headers.set("Accept", "application/json");
   }
 

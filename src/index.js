@@ -1,5 +1,6 @@
 import {
   ALLOWED_METHODS,
+  DIRECTUS_ASSET_PROXY_PREFIX,
   GRAPHQL_PATH,
   HEALTH_PATH,
   UPSTREAM_PROBE_PATH,
@@ -30,6 +31,7 @@ import {
   fetchUpstream,
   getUpstreamTimeoutMs,
   isAbortError,
+  isWebSocketUpgradeRequest,
 } from "./proxy/upstream.js";
 
 export default {
@@ -99,6 +101,10 @@ export default {
         return await runUpstreamProbe(request, env, spanId);
       }
 
+      if (url.pathname.startsWith(DIRECTUS_ASSET_PROXY_PREFIX)) {
+        return await runDirectusAssetProxy(request, env, spanId, url);
+      }
+
       if (url.pathname !== GRAPHQL_PATH) {
         return createErrorResponse(request, env, spanId, 404, "Not found");
       }
@@ -125,6 +131,57 @@ export default {
         );
       }
 
+      const upstreamUrl = buildUpstreamUrl(request, env.UPSTREAM_GRAPHQL_URL);
+      const webSocketUpgrade = isWebSocketUpgradeRequest(request);
+
+      if (webSocketUpgrade) {
+        if (request.method !== "GET") {
+          const response = createErrorResponse(
+            request,
+            env,
+            spanId,
+            405,
+            "Method not allowed"
+          );
+          response.headers.set("Allow", "GET,OPTIONS");
+          return response;
+        }
+
+        const upstreamRequest = buildUpstreamRequest(
+          request,
+          upstreamUrl,
+          undefined,
+          spanId
+        );
+        const upstreamTimeoutMs = getUpstreamTimeoutMs(env);
+
+        try {
+          const upstreamResponse = await fetchUpstream(
+            upstreamRequest,
+            upstreamTimeoutMs
+          );
+
+          // Preserve the upgraded socket by returning the upstream response as-is.
+          if (upstreamResponse.status === 101) {
+            return upstreamResponse;
+          }
+
+          const response = new Response(upstreamResponse.body, upstreamResponse);
+          return withResponseHeaders(request, env, spanId, response, "BYPASS");
+        } catch (error) {
+          if (isAbortError(error)) {
+            return createErrorResponse(
+              request,
+              env,
+              spanId,
+              504,
+              `Upstream request timed out after ${upstreamTimeoutMs}ms (${sanitizeUpstreamUrl(env.UPSTREAM_GRAPHQL_URL)})`
+            );
+          }
+          throw error;
+        }
+      }
+
       const extractedRequestDetails = await extractGraphQLRequest(request);
       const requestDetails = normalizePersistedQueryPayload(
         extractedRequestDetails
@@ -140,7 +197,6 @@ export default {
         operationDetails,
         cacheSettings
       );
-      const upstreamUrl = buildUpstreamUrl(request, env.UPSTREAM_GRAPHQL_URL);
 
       let cacheKey = undefined;
       if (cacheCandidate) {
@@ -269,6 +325,124 @@ async function runUpstreamProbe(request, env, spanId) {
       502,
       `Upstream probe failed: ${toLoggableError(error).message}`
     );
+  }
+}
+
+function normalizePathPrefix(value, fallback) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return fallback;
+  }
+  const noTrailing = raw.replace(/\/+$/, "");
+  return noTrailing.startsWith("/") ? noTrailing : `/${noTrailing}`;
+}
+
+function normalizeDirectusAssetBaseUrl(env) {
+  const explicit = String(env.UPSTREAM_DIRECTUS_ASSET_BASE_URL || "").trim();
+  if (explicit) {
+    return explicit.replace(/\/+$/, "");
+  }
+  return "";
+}
+
+function buildDirectusAssetUpstreamUrl(env, requestUrl) {
+  const base = normalizeDirectusAssetBaseUrl(env);
+  if (!base) {
+    return null;
+  }
+
+  const proxyPrefix = normalizePathPrefix(
+    env.DIRECTUS_ASSET_PROXY_PREFIX,
+    DIRECTUS_ASSET_PROXY_PREFIX
+  );
+  const upstreamAssetPathPrefix = normalizePathPrefix(
+    env.UPSTREAM_DIRECTUS_ASSET_PATH,
+    "/assets"
+  );
+
+  const assetSuffix = requestUrl.pathname.slice(proxyPrefix.length).replace(/^\/+/, "");
+  if (!assetSuffix) {
+    return null;
+  }
+
+  const encodedSuffix = assetSuffix
+    .split("/")
+    .map((segment) => {
+      try {
+        return encodeURIComponent(decodeURIComponent(segment));
+      } catch (_error) {
+        return encodeURIComponent(segment);
+      }
+    })
+    .join("/");
+
+  const upstream = new URL(base);
+  upstream.pathname = `${upstreamAssetPathPrefix}/${encodedSuffix}`;
+  upstream.search = requestUrl.search;
+  return upstream.toString();
+}
+
+async function runDirectusAssetProxy(request, env, spanId, url) {
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    const response = createErrorResponse(
+      request,
+      env,
+      spanId,
+      405,
+      "Method not allowed"
+    );
+    response.headers.set("Allow", "GET,HEAD,OPTIONS");
+    return response;
+  }
+
+  const upstreamUrl = buildDirectusAssetUpstreamUrl(env, url);
+  if (!upstreamUrl) {
+    return createErrorResponse(
+      request,
+      env,
+      spanId,
+      503,
+      "UPSTREAM_DIRECTUS_ASSET_BASE_URL is not configured"
+    );
+  }
+
+  const headers = new Headers();
+  const accept = request.headers.get("Accept");
+  if (accept) {
+    headers.set("Accept", accept);
+  }
+  const authorization = request.headers.get("Authorization");
+  if (authorization) {
+    headers.set("Authorization", authorization);
+  }
+  const range = request.headers.get("Range");
+  if (range) {
+    headers.set("Range", range);
+  }
+  headers.set("X-Proxy-Span-Id", spanId);
+
+  const upstreamRequest = new Request(upstreamUrl, {
+    method: request.method,
+    headers,
+    redirect: "follow",
+  });
+  const upstreamTimeoutMs = getUpstreamTimeoutMs(env);
+
+  try {
+    const upstreamResponse = await fetchUpstream(upstreamRequest, upstreamTimeoutMs);
+    const response = new Response(upstreamResponse.body, upstreamResponse);
+    return withResponseHeaders(request, env, spanId, response, "BYPASS");
+  } catch (error) {
+    if (isAbortError(error)) {
+      return createErrorResponse(
+        request,
+        env,
+        spanId,
+        504,
+        `Upstream directus asset request timed out after ${upstreamTimeoutMs}ms (${sanitizeUpstreamUrl(upstreamUrl)})`
+      );
+    }
+    throw error;
   }
 }
 
