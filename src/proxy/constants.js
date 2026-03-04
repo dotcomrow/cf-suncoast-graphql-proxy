@@ -1,6 +1,7 @@
 export const GRAPHQL_PATH = "/graphql";
 export const HEALTH_PATH = "/healthz";
 export const UPSTREAM_PROBE_PATH = "/upstream-probe";
+export const DIRECTUS_ASSET_PROXY_PREFIX = "/directus/assets";
 export const ALLOWED_METHODS = "GET,POST,OPTIONS";
 
 export const DEFAULT_CACHE_TTL_SECONDS = 60;

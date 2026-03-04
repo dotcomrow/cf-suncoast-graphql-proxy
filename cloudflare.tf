@@ -11,6 +11,7 @@ locals {
   upstream_dns_record_type        = local.use_upstream_tunnel ? "CNAME" : "A"
   upstream_dns_record_value       = local.use_upstream_tunnel ? "${local.trimmed_upstream_tunnel_id}.cfargotunnel.com" : var.UPSTREAM_ORIGIN_IP
   upstream_graphql_url            = var.MANAGE_UPSTREAM_DNS_RECORD ? "https://${local.upstream_hostname}${var.UPSTREAM_GRAPHQL_PATH}" : var.UPSTREAM_GRAPHQL_URL
+  upstream_directus_asset_base_url = trimspace(var.UPSTREAM_DIRECTUS_ASSET_BASE_URL) != "" ? trimspace(var.UPSTREAM_DIRECTUS_ASSET_BASE_URL) : (var.MANAGE_UPSTREAM_DNS_RECORD ? "https://${local.upstream_hostname}" : "")
 }
 
 resource "cloudflare_dns_record" "upstream_origin" {
@@ -84,6 +85,21 @@ resource "cloudflare_workers_script" "project_script" {
       name = "UPSTREAM_TIMEOUT_MS"
       type = "plain_text"
       text = tostring(var.UPSTREAM_TIMEOUT_MS)
+    },
+    {
+      name = "UPSTREAM_DIRECTUS_ASSET_BASE_URL"
+      type = "plain_text"
+      text = local.upstream_directus_asset_base_url
+    },
+    {
+      name = "UPSTREAM_DIRECTUS_ASSET_PATH"
+      type = "plain_text"
+      text = var.UPSTREAM_DIRECTUS_ASSET_PATH
+    },
+    {
+      name = "DIRECTUS_ASSET_PROXY_PREFIX"
+      type = "plain_text"
+      text = var.DIRECTUS_ASSET_PROXY_PREFIX
     },
     {
       name = "CACHE_ENABLED"

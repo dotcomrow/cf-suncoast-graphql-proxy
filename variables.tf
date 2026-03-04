@@ -133,6 +133,37 @@ variable "UPSTREAM_GRAPHQL_PATH" {
   }
 }
 
+variable "UPSTREAM_DIRECTUS_ASSET_BASE_URL" {
+  description = "Base URL for Directus asset passthrough (used by /directus/assets/* proxy route)."
+  type        = string
+  nullable    = false
+  default     = ""
+}
+
+variable "UPSTREAM_DIRECTUS_ASSET_PATH" {
+  description = "Path prefix appended to UPSTREAM_DIRECTUS_ASSET_BASE_URL for asset passthrough requests."
+  type        = string
+  nullable    = false
+  default     = "/assets"
+
+  validation {
+    condition     = startswith(var.UPSTREAM_DIRECTUS_ASSET_PATH, "/")
+    error_message = "UPSTREAM_DIRECTUS_ASSET_PATH must start with '/'."
+  }
+}
+
+variable "DIRECTUS_ASSET_PROXY_PREFIX" {
+  description = "Public path prefix exposed by this Worker for Directus asset passthrough."
+  type        = string
+  nullable    = false
+  default     = "/directus/assets"
+
+  validation {
+    condition     = startswith(var.DIRECTUS_ASSET_PROXY_PREFIX, "/")
+    error_message = "DIRECTUS_ASSET_PROXY_PREFIX must start with '/'."
+  }
+}
+
 variable "UPSTREAM_TIMEOUT_MS" {
   description = "Upstream fetch timeout in milliseconds"
   type        = number
