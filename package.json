@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "webpack --config webpack.config.js",
-    "start": "clear && webpack --config webpack.config.js && npx wrangler dev --remote"
+    "start": "clear && webpack --config webpack.config.js && npx wrangler dev --remote",
+    "test": "node --test"
   },
   "dependencies": {
     "graphql": "^16.9.0"
