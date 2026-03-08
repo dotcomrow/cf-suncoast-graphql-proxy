@@ -131,6 +131,18 @@ export default {
         );
       }
 
+      if (!isBearerAuthorization(request.headers.get("Authorization"))) {
+        const response = createErrorResponse(
+          request,
+          env,
+          spanId,
+          401,
+          "Not authorized"
+        );
+        response.headers.set("WWW-Authenticate", "Bearer");
+        return response;
+      }
+
       const upstreamUrl = buildUpstreamUrl(request, env.UPSTREAM_GRAPHQL_URL);
       const webSocketUpgrade = isWebSocketUpgradeRequest(request);
 
@@ -382,7 +394,12 @@ function buildDirectusAssetUpstreamUrl(env, requestUrl) {
   return upstream.toString();
 }
 
-async function runDirectusAssetProxy(request, env, spanId, url) {
+async function runDirectusAssetProxy(
+  request,
+  env,
+  spanId,
+  url
+) {
   if (request.method !== "GET" && request.method !== "HEAD") {
     const response = createErrorResponse(
       request,
@@ -444,6 +461,10 @@ async function runDirectusAssetProxy(request, env, spanId, url) {
     }
     throw error;
   }
+}
+
+function isBearerAuthorization(value) {
+  return /^Bearer\s+\S+$/i.test(String(value || "").trim());
 }
 
 function sanitizeUpstreamUrl(rawUrl) {

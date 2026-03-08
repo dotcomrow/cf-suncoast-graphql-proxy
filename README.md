@@ -11,7 +11,8 @@ Cloudflare Worker that acts as a strict pull-through proxy to an upstream GraphQ
 - Preserves upstream schema exposure (including introspection behavior) because the worker does not host schema locally.
 - Enforces CORS allow-list via `CORS_DOMAINS`; additionally allows localhost loopback origins only when the request hostname has a `dev` subdomain label.
 - Uses bearer-token passthrough only:
-  - `Authorization: Bearer ...` is forwarded to upstream unchanged.
+  - GraphQL requests require `Authorization: Bearer ...`; missing/invalid bearer headers return `401 Not authorized`.
+  - Valid `Authorization: Bearer ...` headers are forwarded to upstream unchanged.
 - Forwards client IP metadata to upstream using Cloudflare-trusted source only:
   - Reads only `CF-Connecting-IP` from the Cloudflare edge request.
   - Ignores inbound `X-Forwarded-For`, `Forwarded`, `X-Real-IP`, and `True-Client-IP` values from clients.
