@@ -9,6 +9,7 @@ Cloudflare Worker that acts as a strict pull-through proxy to an upstream GraphQ
 - Proxies requests to `UPSTREAM_GRAPHQL_URL` without local schema composition/resolvers.
 - Supports GraphQL subscription upgrades over WebSocket by forwarding required upgrade and `Sec-WebSocket-*` headers to upstream.
 - Preserves upstream schema exposure (including introspection behavior) because the worker does not host schema locally.
+- Enforces CORS allow-list via `CORS_DOMAINS`; additionally allows localhost loopback origins only when the request hostname has a `dev` subdomain label.
 - Uses bearer-token passthrough only:
   - `Authorization: Bearer ...` is forwarded to upstream unchanged.
 - Forwards client IP metadata to upstream using Cloudflare-trusted source only:
