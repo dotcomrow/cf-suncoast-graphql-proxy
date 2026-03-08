@@ -11,18 +11,62 @@ function parseDelimitedList(value) {
     .filter((item) => item.length > 0);
 }
 
+function isConfiguredOriginAllowed(requestOrigin, env) {
+  const allowedOrigins = parseDelimitedList(env.CORS_DOMAINS);
+  if (allowedOrigins.length === 0) {
+    return true;
+  }
+
+  return allowedOrigins.includes("*") || allowedOrigins.includes(requestOrigin);
+}
+
+function isDevHostname(hostname) {
+  return hostname.split(".").includes("dev");
+}
+
+function isLocalhostHostname(hostname) {
+  const normalized = hostname.toLowerCase();
+  return (
+    normalized === "localhost" ||
+    normalized === "127.0.0.1" ||
+    normalized === "0.0.0.0" ||
+    normalized === "::1" ||
+    normalized === "[::1]"
+  );
+}
+
+function isLocalhostOrigin(origin) {
+  try {
+    const originUrl = new URL(origin);
+    const isHttpOrigin =
+      originUrl.protocol === "http:" || originUrl.protocol === "https:";
+    return isHttpOrigin && isLocalhostHostname(originUrl.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function isRequestOriginAllowed(request, env, requestOrigin) {
+  if (isConfiguredOriginAllowed(requestOrigin, env)) {
+    return true;
+  }
+
+  // Allow localhost origins only when requests target the dev hostname.
+  try {
+    const requestHostname = new URL(request.url).hostname.toLowerCase();
+    return isDevHostname(requestHostname) && isLocalhostOrigin(requestOrigin);
+  } catch {
+    return false;
+  }
+}
+
 export function isOriginAllowed(request, env) {
   const requestOrigin = request.headers.get("Origin");
   if (!requestOrigin) {
     return { allowed: true };
   }
 
-  const allowedOrigins = parseDelimitedList(env.CORS_DOMAINS);
-  if (allowedOrigins.length === 0) {
-    return { allowed: true };
-  }
-
-  if (allowedOrigins.includes("*") || allowedOrigins.includes(requestOrigin)) {
+  if (isRequestOriginAllowed(request, env, requestOrigin)) {
     return { allowed: true };
   }
 
@@ -33,12 +77,7 @@ export function applyCorsHeaders(headers, request, env) {
   const requestOrigin = request.headers.get("Origin");
   if (!requestOrigin) return;
 
-  const allowedOrigins = parseDelimitedList(env.CORS_DOMAINS);
-  if (
-    allowedOrigins.length > 0 &&
-    !allowedOrigins.includes("*") &&
-    !allowedOrigins.includes(requestOrigin)
-  ) {
+  if (!isRequestOriginAllowed(request, env, requestOrigin)) {
     return;
   }
 
