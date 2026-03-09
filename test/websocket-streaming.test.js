@@ -21,21 +21,26 @@ function createCtx() {
   }
 }
 
-function createWebSocketRequest(method = "GET") {
+function createWebSocketRequest(method = "GET", options = {}) {
+  const headers = {
+    Origin: ORIGIN,
+    SpanId: "span-test-1",
+    Connection: "Upgrade",
+    Upgrade: "websocket",
+    "Sec-WebSocket-Key": "dGVzdC1rZXk=",
+    "Sec-WebSocket-Version": "13",
+    "Sec-WebSocket-Protocol": "graphql-transport-ws",
+    "Sec-WebSocket-Extensions": "permessage-deflate",
+    "CF-Connecting-IP": "198.51.100.20",
+  }
+
+  if (options.includeAuthorization !== false) {
+    headers.Authorization = "Bearer test-token"
+  }
+
   return new Request("https://proxy.example.com/graphql?subscription=1", {
     method,
-    headers: {
-      Origin: ORIGIN,
-      SpanId: "span-test-1",
-      Authorization: "Bearer test-token",
-      Connection: "Upgrade",
-      Upgrade: "websocket",
-      "Sec-WebSocket-Key": "dGVzdC1rZXk=",
-      "Sec-WebSocket-Version": "13",
-      "Sec-WebSocket-Protocol": "graphql-transport-ws",
-      "Sec-WebSocket-Extensions": "permessage-deflate",
-      "CF-Connecting-IP": "198.51.100.20",
-    },
+    headers,
   })
 }
 
@@ -108,6 +113,38 @@ test("rejects websocket upgrade when method is not GET", async () => {
 
     const payload = await response.json()
     assert.equal(payload.error, "Method not allowed")
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test("allows websocket upgrade without bearer header so upstream can enforce connection auth", async () => {
+  const request = createWebSocketRequest("GET", { includeAuthorization: false })
+  const env = createEnv()
+  const ctx = createCtx()
+
+  let upstreamRequest
+  const upstreamUpgradeResponse = {
+    status: 101,
+    headers: new Headers({
+      Upgrade: "websocket",
+      Connection: "Upgrade",
+    }),
+    body: null,
+  }
+
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async (requestArg) => {
+    upstreamRequest = requestArg
+    return upstreamUpgradeResponse
+  }
+
+  try {
+    const response = await worker.fetch(request, env, ctx)
+
+    assert.equal(response, upstreamUpgradeResponse)
+    assert.ok(upstreamRequest instanceof Request)
+    assert.equal(upstreamRequest.headers.get("Authorization"), null)
   } finally {
     globalThis.fetch = originalFetch
   }
