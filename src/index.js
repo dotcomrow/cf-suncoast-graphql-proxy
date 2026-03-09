@@ -131,7 +131,16 @@ export default {
         );
       }
 
-      if (!isBearerAuthorization(request.headers.get("Authorization"))) {
+      const upstreamUrl = buildUpstreamUrl(request, env.UPSTREAM_GRAPHQL_URL);
+      const webSocketUpgrade = isWebSocketUpgradeRequest(request);
+
+      // Browser WebSocket clients cannot reliably set Authorization headers
+      // during the handshake. Keep header auth required for HTTP GraphQL and
+      // defer WS auth to upstream GraphQL connection initialization.
+      if (
+        !webSocketUpgrade &&
+        !isBearerAuthorization(request.headers.get("Authorization"))
+      ) {
         const response = createErrorResponse(
           request,
           env,
@@ -142,9 +151,6 @@ export default {
         response.headers.set("WWW-Authenticate", "Bearer");
         return response;
       }
-
-      const upstreamUrl = buildUpstreamUrl(request, env.UPSTREAM_GRAPHQL_URL);
-      const webSocketUpgrade = isWebSocketUpgradeRequest(request);
 
       if (webSocketUpgrade) {
         if (request.method !== "GET") {
