@@ -168,7 +168,7 @@ variable "UPSTREAM_TIMEOUT_MS" {
   description = "Upstream fetch timeout in milliseconds"
   type        = number
   nullable    = false
-  default     = 15000
+  default     = 60000
 }
 
 variable "ALLOWED_HOSTS" {
