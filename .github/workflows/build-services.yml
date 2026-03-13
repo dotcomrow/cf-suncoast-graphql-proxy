@@ -11,6 +11,8 @@ jobs:
     env:
       TF_CLOUD_ORGANIZATION: ${{ github.repository_owner }}
       TF_API_TOKEN: ${{ secrets.TFE_TOKEN }}
+      TF_REGISTRY_CLIENT_TIMEOUT: "120"
+      TF_REGISTRY_DISCOVERY_RETRY: "8"
     name: "Build and Deploy"
     runs-on: ubuntu-latest
 
