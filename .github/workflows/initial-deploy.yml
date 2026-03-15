@@ -308,30 +308,6 @@ jobs:
             --data @payload.json \
             https://app.terraform.io/api/v2/vars
 
-      - name: Create release
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        with:
-          github-token: "${{ github.token }}"
-          script: |
-            try {
-              const response = await github.rest.repos.createRelease({
-                draft: false,
-                generate_release_notes: true,
-                name: process.env.VERSION,
-                owner: context.repo.owner,
-                prerelease: false,
-                repo: context.repo.repo,
-                tag_name: process.env.VERSION + '-initial',
-                target_commitish: 'release'
-              });
-              core.exportVariable('RELEASE_ID', response.data.id);
-              core.exportVariable('RELEASE_UPLOAD_URL', response.data.upload_url);
-            } catch (error) {
-              core.setFailed(error.message);
-            }
-
       - uses: hashicorp/tfc-workflows-github/actions/upload-configuration@8e08d1ba957673f5fbf971a22b3219639dc45661
         id: upload_dev
         with:
@@ -371,6 +347,53 @@ jobs:
               /repos/${{ github.repository_owner }}/${{ github.event.repository.name }}/actions/workflows/initial-deploy.yml/disable
         env:
           GH_TOKEN: ${{ github.token }}
+
+      - name: Create release
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          TARGET_COMMITISH: release
+        with:
+          github-token: "${{ github.token }}"
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const tag = `${process.env.VERSION}-initial`;
+            const targetCommitish = process.env.TARGET_COMMITISH;
+
+            let existingRelease = null;
+
+            try {
+              const existing = await github.rest.repos.getReleaseByTag({
+                owner,
+                repo,
+                tag
+              });
+              existingRelease = existing.data;
+              core.info(`Release for tag '${tag}' already exists (id=${existingRelease.id}). Skipping create.`);
+            } catch (error) {
+              if (error.status !== 404) {
+                throw error;
+              }
+            }
+
+            if (!existingRelease) {
+              const created = await github.rest.repos.createRelease({
+                owner,
+                repo,
+                tag_name: tag,
+                target_commitish: targetCommitish,
+                name: process.env.VERSION,
+                draft: false,
+                prerelease: false,
+                generate_release_notes: true
+              });
+              existingRelease = created.data;
+              core.info(`Created release id=${existingRelease.id} for tag '${tag}'.`);
+            }
+
+            core.exportVariable('RELEASE_ID', String(existingRelease.id));
+            core.exportVariable('RELEASE_UPLOAD_URL', existingRelease.upload_url);
 
       - name: Delete release branch
         continue-on-error: true

@@ -86,31 +86,6 @@ jobs:
           git commit -m "Release ${{ steps.version.outputs.version }}-${{ steps.setvars.outputs.environment }}"
           git push
 
-      - name: Create release
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
-        if: ${{ steps.check_state.outputs.initial_deploy_state == 'disabled_manually' }}
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        with:
-          github-token: "${{ github.token }}"
-          script: |
-            try {
-              const response = await github.rest.repos.createRelease({
-                draft: false,
-                generate_release_notes: true,
-                name: process.env.VERSION,
-                owner: context.repo.owner,
-                prerelease: false,
-                repo: context.repo.repo,
-                tag_name: process.env.VERSION,
-                target_commitish: 'release-${{ steps.setvars.outputs.environment }}'
-              });
-              core.exportVariable('RELEASE_ID', response.data.id);
-              core.exportVariable('RELEASE_UPLOAD_URL', response.data.upload_url);
-            } catch (error) {
-              core.setFailed(error.message);
-            }
-
       - name: Fetch workspace id
         id: fetch_workspace_id
         if: ${{ steps.check_state.outputs.initial_deploy_state == 'disabled_manually' }}
@@ -182,6 +157,54 @@ jobs:
           workspace: ${{ github.event.repository.name }}-${{ steps.setvars.outputs.environment }}
           configuration_version: ${{ steps.upload.outputs.configuration_version_id }}
           plan_only: false
+
+      - name: Create release
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
+        if: ${{ steps.check_state.outputs.initial_deploy_state == 'disabled_manually' }}
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          TARGET_COMMITISH: release-${{ steps.setvars.outputs.environment }}
+        with:
+          github-token: "${{ github.token }}"
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const tag = process.env.VERSION;
+            const targetCommitish = process.env.TARGET_COMMITISH;
+
+            let existingRelease = null;
+
+            try {
+              const existing = await github.rest.repos.getReleaseByTag({
+                owner,
+                repo,
+                tag
+              });
+              existingRelease = existing.data;
+              core.info(`Release for tag '${tag}' already exists (id=${existingRelease.id}). Skipping create.`);
+            } catch (error) {
+              if (error.status !== 404) {
+                throw error;
+              }
+            }
+
+            if (!existingRelease) {
+              const created = await github.rest.repos.createRelease({
+                owner,
+                repo,
+                tag_name: tag,
+                target_commitish: targetCommitish,
+                name: tag,
+                draft: false,
+                prerelease: false,
+                generate_release_notes: true
+              });
+              existingRelease = created.data;
+              core.info(`Created release id=${existingRelease.id} for tag '${tag}'.`);
+            }
+
+            core.exportVariable('RELEASE_ID', String(existingRelease.id));
+            core.exportVariable('RELEASE_UPLOAD_URL', existingRelease.upload_url);
 
       - name: Delete release branch
         continue-on-error: true
