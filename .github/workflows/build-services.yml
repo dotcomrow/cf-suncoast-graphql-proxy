@@ -75,6 +75,9 @@ jobs:
           cd release
           npm install
           npm run build
+          rm -rf terraform/dist
+          mkdir -p terraform
+          cp -R dist terraform/dist
 
       - name: Commit
         if: ${{ steps.check_state.outputs.initial_deploy_state == 'disabled_manually' }}
@@ -147,7 +150,7 @@ jobs:
         if: ${{ steps.check_state.outputs.initial_deploy_state == 'disabled_manually' }}
         with:
           workspace: ${{ github.event.repository.name }}-${{ steps.setvars.outputs.environment }}
-          directory: release
+          directory: release/terraform
 
       - name: Create Apply Run
         uses: hashicorp/tfc-workflows-github/actions/create-run@8e08d1ba957673f5fbf971a22b3219639dc45661
