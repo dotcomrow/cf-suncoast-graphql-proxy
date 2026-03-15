@@ -172,7 +172,7 @@ variable "UPSTREAM_TIMEOUT_MS" {
 }
 
 variable "ALLOWED_HOSTS" {
-  description = "Comma-separated allowed CORS origins"
+  description = "Comma-separated additional CORS origins (exact or wildcard patterns); Terraform also appends *.<domain> automatically"
   type        = string
   nullable    = false
 }
