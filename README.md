@@ -9,7 +9,7 @@ Cloudflare Worker that acts as a strict pull-through proxy to an upstream GraphQ
 - Proxies requests to `UPSTREAM_GRAPHQL_URL` without local schema composition/resolvers.
 - Supports GraphQL subscription upgrades over WebSocket by forwarding required upgrade and `Sec-WebSocket-*` headers to upstream.
 - Preserves upstream schema exposure (including introspection behavior) because the worker does not host schema locally.
-- Enforces CORS allow-list via `CORS_DOMAINS`; additionally allows localhost loopback origins only when the request hostname has a `dev` subdomain label.
+- Enforces CORS allow-list via `CORS_DOMAINS` (exact origins and wildcard subdomain patterns like `https://*.suncoast.systems` or `*.suncoast.systems`); additionally allows localhost loopback origins only when the request hostname has a `dev` subdomain label.
 - Uses bearer-token passthrough only:
   - HTTP GraphQL requests (`GET`/`POST`) require `Authorization: Bearer ...`; missing/invalid bearer headers return `401 Not authorized`.
   - WebSocket upgrade handshakes are allowed without `Authorization` so browser clients can connect; upstream GraphQL must enforce token auth during `connection_init`.
@@ -40,7 +40,8 @@ Cloudflare Worker that acts as a strict pull-through proxy to an upstream GraphQ
 - `UPSTREAM_DIRECTUS_ASSET_BASE_URL` (optional): base URL used for `/directus/assets/*` passthrough. If omitted and `MANAGE_UPSTREAM_DNS_RECORD=true`, defaults to `https://<UPSTREAM_DNS_NAME>.<domain>`.
 - `UPSTREAM_DIRECTUS_ASSET_PATH` (default `/assets`): upstream path prefix appended to `UPSTREAM_DIRECTUS_ASSET_BASE_URL`.
 - `DIRECTUS_ASSET_PROXY_PREFIX` (default `/directus/assets`): public path prefix exposed by this worker for asset passthrough.
-- `CORS_DOMAINS` (required): comma-separated allowed origins.
+- `CORS_DOMAINS` (required): comma-separated allowed origins. Supports exact origins and wildcard subdomain entries like `https://*.suncoast.systems` or `*.suncoast.systems`.
+  - Terraform sets this from `ALLOWED_HOSTS` and automatically appends `*.${domain}`.
 - `CACHE_ENABLED` (default `true`).
 - `CACHE_TTL_SECONDS` (default `60`).
 - `CACHE_STALE_WHILE_REVALIDATE_SECONDS` (default `30`).

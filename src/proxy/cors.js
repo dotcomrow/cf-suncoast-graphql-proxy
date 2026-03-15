@@ -11,13 +11,130 @@ function parseDelimitedList(value) {
     .filter((item) => item.length > 0);
 }
 
+function tryParseHttpOrigin(origin) {
+  try {
+    const parsedOrigin = new URL(origin);
+    if (parsedOrigin.protocol !== "http:" && parsedOrigin.protocol !== "https:") {
+      return null;
+    }
+    return parsedOrigin;
+  } catch {
+    return null;
+  }
+}
+
+function getDefaultPort(protocol) {
+  if (protocol === "http:") return "80";
+  if (protocol === "https:") return "443";
+  return "";
+}
+
+function getEffectivePort(originUrl) {
+  return originUrl.port || getDefaultPort(originUrl.protocol);
+}
+
+function parseWildcardOriginPattern(configuredOrigin) {
+  const wildcardOrigin = configuredOrigin.trim();
+  let protocol;
+  let wildcardHost = wildcardOrigin;
+
+  const protocolSeparatorIndex = wildcardOrigin.indexOf("://");
+  if (protocolSeparatorIndex >= 0) {
+    const normalizedProtocol = wildcardOrigin
+      .slice(0, protocolSeparatorIndex)
+      .toLowerCase();
+    if (normalizedProtocol !== "http" && normalizedProtocol !== "https") {
+      return null;
+    }
+
+    protocol = `${normalizedProtocol}:`;
+    wildcardHost = wildcardOrigin.slice(protocolSeparatorIndex + 3);
+  }
+
+  if (
+    wildcardHost.includes("/") ||
+    wildcardHost.includes("?") ||
+    wildcardHost.includes("#")
+  ) {
+    return null;
+  }
+
+  let port;
+  let wildcardHostname = wildcardHost;
+  const portMatch = wildcardHost.match(/^(.*):(\d+)$/);
+  if (portMatch) {
+    wildcardHostname = portMatch[1];
+    port = portMatch[2];
+  }
+
+  if (!wildcardHostname.startsWith("*.")) {
+    return null;
+  }
+
+  const hostnameSuffix = wildcardHostname.slice(1).toLowerCase();
+  if (hostnameSuffix.length < 3) {
+    return null;
+  }
+
+  return { protocol, port, hostnameSuffix };
+}
+
+function isWildcardOriginMatch(configuredOrigin, requestOriginUrl) {
+  const wildcardPattern = parseWildcardOriginPattern(configuredOrigin);
+  if (!wildcardPattern || !requestOriginUrl) {
+    return false;
+  }
+
+  if (
+    wildcardPattern.protocol &&
+    wildcardPattern.protocol !== requestOriginUrl.protocol
+  ) {
+    return false;
+  }
+
+  if (wildcardPattern.port && wildcardPattern.port !== getEffectivePort(requestOriginUrl)) {
+    return false;
+  }
+
+  const requestHostname = requestOriginUrl.hostname.toLowerCase();
+  return requestHostname.endsWith(wildcardPattern.hostnameSuffix);
+}
+
+function isExactOriginMatch(configuredOrigin, requestOrigin, requestOriginUrl) {
+  if (configuredOrigin === requestOrigin) {
+    return true;
+  }
+
+  if (!requestOriginUrl) {
+    return false;
+  }
+
+  const configuredOriginUrl = tryParseHttpOrigin(configuredOrigin);
+  if (!configuredOriginUrl) {
+    return false;
+  }
+
+  return configuredOriginUrl.origin === requestOriginUrl.origin;
+}
+
 function isConfiguredOriginAllowed(requestOrigin, env) {
   const allowedOrigins = parseDelimitedList(env.CORS_DOMAINS);
   if (allowedOrigins.length === 0) {
     return true;
   }
 
-  return allowedOrigins.includes("*") || allowedOrigins.includes(requestOrigin);
+  const requestOriginUrl = tryParseHttpOrigin(requestOrigin);
+
+  return allowedOrigins.some((configuredOrigin) => {
+    if (configuredOrigin === "*") {
+      return true;
+    }
+
+    return (
+      isExactOriginMatch(configuredOrigin, requestOrigin, requestOriginUrl) ||
+      isWildcardOriginMatch(configuredOrigin, requestOriginUrl)
+    );
+  });
 }
 
 function isDevHostname(hostname) {

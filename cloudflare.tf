@@ -2,6 +2,7 @@ locals {
   upstream_hostname               = "${var.UPSTREAM_DNS_NAME}.${var.domain}"
   normalized_environment          = lower(trimspace(var.environment))
   normalized_shared_owner_env     = lower(trimspace(var.UPSTREAM_SHARED_OWNER_ENVIRONMENT))
+  normalized_allowed_hosts        = trimspace(var.ALLOWED_HOSTS)
   is_shared_upstream_owner        = local.normalized_environment == local.normalized_shared_owner_env
   manage_shared_upstream_dns      = var.MANAGE_UPSTREAM_DNS_RECORD && local.is_shared_upstream_owner
   manage_shared_upstream_tunnel   = var.MANAGE_UPSTREAM_TUNNEL_CONFIG && local.is_shared_upstream_owner
@@ -12,6 +13,7 @@ locals {
   upstream_dns_record_value       = local.use_upstream_tunnel ? "${local.trimmed_upstream_tunnel_id}.cfargotunnel.com" : var.UPSTREAM_ORIGIN_IP
   upstream_graphql_url            = var.MANAGE_UPSTREAM_DNS_RECORD ? "https://${local.upstream_hostname}${var.UPSTREAM_GRAPHQL_PATH}" : var.UPSTREAM_GRAPHQL_URL
   upstream_directus_asset_base_url = trimspace(var.UPSTREAM_DIRECTUS_ASSET_BASE_URL) != "" ? trimspace(var.UPSTREAM_DIRECTUS_ASSET_BASE_URL) : (var.MANAGE_UPSTREAM_DNS_RECORD ? "https://${local.upstream_hostname}" : "")
+  cors_domains                    = join(",", compact([local.normalized_allowed_hosts, "*.${var.domain}"]))
 }
 
 resource "cloudflare_dns_record" "upstream_origin" {
@@ -69,7 +71,7 @@ resource "cloudflare_workers_script" "project_script" {
     {
       name = "CORS_DOMAINS"
       type = "plain_text"
-      text = var.ALLOWED_HOSTS
+      text = local.cors_domains
     },
     {
       name = "VERSION"
