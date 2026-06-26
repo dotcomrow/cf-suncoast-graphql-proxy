@@ -4,7 +4,7 @@ import {
 } from "./constants.js";
 import { applyClientIpHeaders } from "./client-ip.js";
 
-const DEFAULT_UPSTREAM_TIMEOUT_MS = 60000;
+const DEFAULT_UPSTREAM_TIMEOUT_MS = 120000;
 const UPSTREAM_PROBE_QUERY = "query __ProxyUpstreamProbe { __typename }";
 
 export function isWebSocketUpgradeRequest(request) {
