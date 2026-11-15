@@ -32,6 +32,7 @@ function createWebSocketRequest(method = "GET", options = {}) {
     "Sec-WebSocket-Protocol": "graphql-transport-ws",
     "Sec-WebSocket-Extensions": "permessage-deflate",
     "CF-Connecting-IP": "198.51.100.20",
+    "X-Suncoast-Browser-Subscription-Proof": "test-browser-subscription-proof",
   }
 
   if (options.includeAuthorization !== false) {
@@ -87,6 +88,10 @@ test("proxies websocket upgrade requests to upstream graphql and preserves 101 r
       "permessage-deflate"
     )
     assert.equal(upstreamRequest.headers.get("X-Proxy-Span-Id"), "span-test-1")
+    assert.equal(
+      upstreamRequest.headers.get("X-Suncoast-Browser-Subscription-Proof"),
+      "test-browser-subscription-proof"
+    )
 
     // For upgrade requests, proxy should not inject JSON-centric defaults.
     assert.equal(upstreamRequest.headers.get("Accept"), null)

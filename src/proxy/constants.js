@@ -30,4 +30,5 @@ export const FORWARDED_WEBSOCKET_HEADERS = [
   "Sec-WebSocket-Version",
   "Sec-WebSocket-Protocol",
   "Sec-WebSocket-Extensions",
+  "X-Suncoast-Browser-Subscription-Proof",
 ];
